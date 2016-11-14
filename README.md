@@ -1,7 +1,8 @@
 # zlog
 golang log library
 ## 简介
-	zlog是一个golang日志库, 功能十分简单,支持日志分级, 分为debug, notice, info, error四个等级,优先级依次递增.日志文件按照日期分割,格式为: 程序名.日期.log
+	zlog是一个golang日志库, 功能十分简单,支持日志分级, 分为debug, notice, info, error四个等级,优先级依次递增.
+	日志文件按照日期分割,格式为: 程序名.日期.log
 ## 示例
 	···
 		package main
