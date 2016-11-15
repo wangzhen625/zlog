@@ -4,9 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"runtime"
+	"sync"
 	"time"
 )
 
@@ -27,21 +26,17 @@ var severityName = []string{
 const default_call_depth int = 2
 
 type Logger struct {
-	root_path      string
-	log_file       *os.File
-	log_level      int
-	depth          int
-	next_file_time time.Time
+	root_path string
+	log_file  *os.File
+	log_level int
+	depth     int
 }
 
-var programName string
 var logger Logger
 
-func InitLogger(root_path string, level ...int) {
+var next_create_file_time int64
 
-	//get the program name as log file prefix
-	file, _ := exec.LookPath(os.Args[0])
-	programName = filepath.Base(file)
+func InitLogger(root_path string, level int) {
 
 	defer func() {
 		if err := recover(); err != nil {
@@ -53,14 +48,10 @@ func InitLogger(root_path string, level ...int) {
 	logger.depth = default_call_depth
 	logger.root_path = root_path
 
-	var levelEnum = 0
-	if len(level) > 0 {
-		levelEnum = level[0]
-	}
-	if levelEnum != DEBUG_LOG && levelEnum != NOTICE_LOG && levelEnum != INFO_LOG && levelEnum != ERROR_LOG {
+	if level < DEBUG_LOG || level > ERROR_LOG {
 		panic("Logger is not supported")
 	}
-	logger.log_level = levelEnum
+	logger.log_level = level
 
 	err := logger.getLogFile()
 	if err != nil {
@@ -105,27 +96,18 @@ func Notice(format string, args ...interface{}) {
 	logger.logFormat(NOTICE_LOG, fmt.Sprintf(format, args...))
 }
 
+var once_log_dir sync.Once
+
 func (logger *Logger) getLogFile() error {
-	root_path := logger.root_path
-	flag, err := IsExist(root_path)
 
-	if err != nil {
+	once_log_dir.Do(createLogDir)
 
-		panic(err)
-	}
+	next_create_file_time = time.Now().Unix()/(24*3600)*(24*3600) + 16*3600
 
-	if flag == false {
-		os.MkdirAll(root_path, os.ModeDir)
-	}
+	log_name := logName(time.Now())
+	log_path := fmt.Sprintf("%s/%s", logger.root_path, log_name)
 
-	date := time.Unix(time.Now().Unix(), 0).Format("2006-01-02")
-	next_time := time.Unix(time.Now().Unix()+(24*3600), 0)
-	next_time = time.Date(next_time.Year(), next_time.Month(), next_time.Day(), 0, 0, 0, 0, next_time.Location())
-	logger.next_file_time = next_time
-
-	log_path := fmt.Sprintf("%s/%s.%s.log", root_path, programName, date)
 	file, err := os.OpenFile(log_path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, os.ModePerm)
-
 	if file == nil {
 		return errors.New("open log file failed")
 	}
@@ -143,7 +125,7 @@ func (logger *Logger) logFormat(level int, log string) {
 	}()
 
 	now := time.Now()
-	if now.Unix() > logger.next_file_time.Unix() {
+	if now.Unix() > next_create_file_time {
 		if err := logger.getLogFile(); err != nil {
 			panic(err)
 		}
