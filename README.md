@@ -1,7 +1,8 @@
 # zlog
 golang log library
 ## 简介
-	zlog是一个golang日志库, 功能十分简单,支持日志分级, 分为debug, notice, info, error四个等级,优先级依次递增.日志文件按照日期分割,格式为: 程序名.日期.log
+	zlog是一个golang日志库, 功能十分简单,支持日志分级, 分为debug, notice, info, error四个等级,优先级依次递增.
+	日志文件按照日期分割,格式为: 程序名.日期.log
 ## 示例
 	···
 		package main
@@ -13,17 +14,17 @@ golang log library
 		func main() {
 
 			//设定文件路径,不存在则自动创建,设定最小输出等级
-			logger := log.InitLogger("../log", log.LEVEL_DEBUG)
+			zlog.InitLogger("../log", log.LEVEL_DEBUG)
 
-			logger.Error("error test")
+			zlog.Error("error test")
 			//支持format格式
-			logger.Error("error test: %s", "zlog")
-			logger.Info("info test")
-			logger.Info("info test: %s", "zlog")
-			logger.Notice("notice test")
-			logger.Notice("notice test: %s", "zlog")
-			logger.Debug("debug test")
-			logger.Debug("debug test: %s", "zlog")
+			zlog.Error("error test: %s", "zlog")
+			zlog.Info("info test")
+			zlog.Info("info test: %s", "zlog")
+			zlog.Notice("notice test")
+			zlog.Notice("notice test: %s", "zlog")
+			zlog.Debug("debug test")
+			zlog.Debug("debug test: %s", "zlog")
 		}
 
 	...
