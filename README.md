@@ -33,7 +33,7 @@ func main() {
 ```
 
 ##输出样式
-![ex](/image/ex.png)
+![tmp](/image/tmp.png)
 
 
 
