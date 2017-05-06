@@ -5,22 +5,25 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
 
 const (
 	DEBUG_LOG = iota
-	NOTICE_LOG
+	TRACE_LOG
 	INFO_LOG
 	ERROR_LOG
+	FATAL_LOG
 )
 
 var severityName = []string{
-	DEBUG_LOG:  " Debug",
-	NOTICE_LOG: "Notice",
-	INFO_LOG:   " Info ",
-	ERROR_LOG:  " Error",
+	DEBUG_LOG: "Debug",
+	TRACE_LOG: "Trace",
+	INFO_LOG:  " Info",
+	ERROR_LOG: "Error",
+	FATAL_LOG: "Fatal",
 }
 
 const default_call_depth int = 2
@@ -48,7 +51,7 @@ func InitLogger(root_path string, level int) {
 	logger.depth = default_call_depth
 	logger.root_path = root_path
 
-	if level < DEBUG_LOG || level > ERROR_LOG {
+	if level < DEBUG_LOG || level > FATAL_LOG {
 		panic("Logger is not supported")
 	}
 	logger.log_level = level
@@ -59,7 +62,9 @@ func InitLogger(root_path string, level int) {
 	}
 }
 
-func (logger *Logger) SetCallDepth(depth int) {
+// call after InitLogger function
+// generally, you needn't change it
+func SetCallDepth(depth int) {
 	if depth > 0 {
 		logger.depth = depth
 	}
@@ -88,12 +93,21 @@ func Error(format string, args ...interface{}) {
 	logger.logFormat(ERROR_LOG, fmt.Sprintf(format, args...))
 }
 
-func Notice(format string, args ...interface{}) {
-	if NOTICE_LOG < logger.log_level {
+func Trace(format string, args ...interface{}) {
+	if TRACE_LOG < logger.log_level {
 		return
 	}
 
-	logger.logFormat(NOTICE_LOG, fmt.Sprintf(format, args...))
+	logger.logFormat(TRACE_LOG, fmt.Sprintf(format, args...))
+}
+
+func Fatal(format string, args ...interface{}) {
+	if FATAL_LOG < logger.log_level {
+		return
+	}
+
+	logger.logFormat(FATAL_LOG, fmt.Sprintf(format, args...))
+	panic("")
 }
 
 var once_log_dir sync.Once
@@ -109,7 +123,7 @@ func (logger *Logger) getLogFile() error {
 
 	file, err := os.OpenFile(log_path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, os.ModePerm)
 	if file == nil {
-		return errors.New("open log file failed")
+		return errors.New("open log file failed:" + err.Error())
 	}
 
 	logger.log_file = file
@@ -132,11 +146,15 @@ func (logger *Logger) logFormat(level int, log string) {
 	}
 
 	time := time.Unix(now.Unix(), 0).Format("2006-01-02 15:04:05")
-
+	time = fmt.Sprintf("%s.%09d", time, now.Nanosecond())
 	_, file, line, ok := runtime.Caller(logger.depth)
 	if ok == false {
 		panic(errors.New("get the line failed"))
 	}
+
+	tmp := strings.Split(file, "/")
+	file = tmp[len(tmp)-1]
+
 	_, err := Write(logger.log_file, fmt.Sprintf("%s [%s]: %s (%s:%d) \n", time, severityName[level], log, file, line))
 	if err != nil {
 		panic(err)

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
 	"time"
 )
 
@@ -31,5 +30,6 @@ func logName(t time.Time) (name string) {
 }
 
 func createLogDir() {
-	os.MkdirAll(logger.root_path, os.ModeDir)
+	os.MkdirAll(logger.root_path, 0777)
+	//os.MkdirAll(logger.root_path, os.ModeDir)
 }
