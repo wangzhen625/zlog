@@ -1,45 +1,39 @@
 # zlog
 golang log library
 ## 简介
-	zlog是一个golang日志库, 功能十分简单,支持日志分级, 分为debug, notice, info, error四个等级,优先级依次递增.
-	日志文件按照日期分割,格式为: 程序名.日期.log
+zlog是一个golang日志库, 轻量简单,支持日志分级, 分为debug, trace, info, error,fatal,优先级依次递增.
+日志文件按照日期分割,格式为: 程序名.日期.log
+
 ## 示例
-	···
-		package main
+```go
+package main
+
+import (
+	"github.com/wangzhen625/zlog"
+)
+
+func main() {
+
+	//设定文件路径,不存在则自动创建,设定最小输出等级
+	zlog.InitLogger("./log", zlog.DEBUG_LOG)
+
+	zlog.Error("error test")
+	//支持format格式
+	zlog.Error("error test: %s", "zlog")
+	zlog.Info("info test")
+	zlog.Info("info test: %s", "zlog")
+	zlog.Trace("trace test")
+	zlog.Trace("trace test: %s", "zlog")
+	zlog.Debug("debug test")
+	zlog.Debug("debug test: %s", "zlog")
+	// zlog.Fatal("fatal test")
+	// zlog.Fatal("fatal test: %s", "zlog")
+}
 		
-		import (
-			"github.com/wangzhen625/zlog"
-		)
-
-		func main() {
-
-			//设定文件路径,不存在则自动创建,设定最小输出等级
-			zlog.InitLogger("../log", log.LEVEL_DEBUG)
-
-			zlog.Error("error test")
-			//支持format格式
-			zlog.Error("error test: %s", "zlog")
-			zlog.Info("info test")
-			zlog.Info("info test: %s", "zlog")
-			zlog.Notice("notice test")
-			zlog.Notice("notice test: %s", "zlog")
-			zlog.Debug("debug test")
-			zlog.Debug("debug test: %s", "zlog")
-		}
-
-	...
+```
 
 ##输出样式
-	...
-		2016-11-13 23:41:48 [ Error]: error test (E:/Go/goProjects/src/test/mylogtest.go:12) 
-		2016-11-13 23:41:48 [ Error]: error test: zlog (E:/Go/goProjects/src/test/mylogtest.go:13) 
-		2016-11-13 23:41:48 [ Info ]: info test (E:/Go/goProjects/src/test/mylogtest.go:14) 
-		2016-11-13 23:41:48 [ Info ]: info test: zlog (E:/Go/goProjects/src/test/mylogtest.go:15) 
-		2016-11-13 23:41:48 [Notice]: notice test (E:/Go/goProjects/src/test/mylogtest.go:16) 
-		2016-11-13 23:41:48 [Notice]: notice test: zlog (E:/Go/goProjects/src/test/mylogtest.go:17) 
-		2016-11-13 23:41:48 [ Debug]: debug test (E:/Go/goProjects/src/test/mylogtest.go:18) 
-		2016-11-13 23:41:48 [ Debug]: debug test: zlog (E:/Go/goProjects/src/test/mylogtest.go:19) 
-	...
+![ex](/image/ex.png)
 
 
 
