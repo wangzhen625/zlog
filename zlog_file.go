@@ -19,6 +19,16 @@ func Write(file *os.File, content string) (bool, error) {
 //get the program name as log file prefix
 var programName = filepath.Base(os.Args[0])
 
+type LogFileProperty struct {
+	programName string
+	date        string
+	time        string
+	hostname    string
+	pid         string
+}
+
+var logProperty LogFileProperty
+
 func logName(t time.Time) (name string) {
 	name = fmt.Sprintf("%s.%04d-%02d-%02d.log",
 		programName,
