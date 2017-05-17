@@ -8,6 +8,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -31,18 +32,34 @@ var severityName = []string{
 type Logger struct {
 	logLevel int
 	depth    int
-	bufOne   bytes.Buffer
-	bufTwo   bytes.Buffer
-	curbuf   *bytes.Buffer
+	buffers  [2]bytes.Buffer
+	writebuf buffer
+	readbuf  buffer
+	mu       sync.Mutex
+}
+
+type buffer struct {
+	ptr   *bytes.Buffer
+	index int
 }
 
 var logger Logger
 
 const defaultCallDepth int = 2
 
-var nextCreateFileTime int64
+var message = make(chan bool)
 
-var messages chan string
+//50M roll back the file
+var rollFileSize int64 = 1024 * 1024 * 50
+
+func init() {
+	logger.depth = defaultCallDepth
+	logger.logLevel = TraceLevel
+	logger.writebuf.ptr = &logger.buffers[0]
+	logger.writebuf.index = 0
+	logger.readbuf.ptr = &logger.buffers[0]
+	logger.readbuf.index = 0
+}
 
 func InitLogger(rootPath string, level int) {
 
@@ -52,29 +69,36 @@ func InitLogger(rootPath string, level int) {
 		}
 	}()
 
-	logger = Logger{}
-	logger.depth = defaultCallDepth
-	logFileProperty.rootPath = rootPath
-
 	if level < DebugLevel || level > FatalLevel {
-		panic("Logger is not supported")
+		panic("Logger level is not supported")
 	}
-	logger.logLevel = level
 
+	logFileProperty.rootPath = rootPath
 	err := logFileProperty.getLogFile()
 	if err != nil {
 		panic(err)
 	}
 
-	messages = make(chan string)
+	go WriteFile()
+	go fileInfoMonitor()
 }
 
 func SetOutput(out io.Writer) {
 
 }
 
-func timeoutFlush(timeout time.Duration) {
-
+func (logger *Logger) switchBuf() {
+	if logger.writebuf.index == 0 {
+		logger.writebuf.ptr = &logger.buffers[1]
+		logger.writebuf.index = 1
+		logger.readbuf.ptr = &logger.buffers[0]
+		logger.readbuf.index = 0
+	} else {
+		logger.writebuf.ptr = &logger.buffers[0]
+		logger.writebuf.index = 0
+		logger.readbuf.ptr = &logger.buffers[1]
+		logger.readbuf.index = 1
+	}
 }
 
 // call after InitLogger function
@@ -83,6 +107,37 @@ func SetCallDepth(depth int) {
 	if depth > 0 {
 		logger.depth = depth
 	}
+}
+
+func (logger *Logger) logFormat(level int, log string) {
+	defer func() {
+		if err := recover(); err != nil {
+			fmt.Println(err)
+		}
+	}()
+
+	fileTime, file, line := makeLogHead()
+	logger.mu.Lock()
+	logger.writebuf.ptr.WriteString(fmt.Sprintf("%s [%s]: %s (%s:%d) \n", fileTime, severityName[level], log, file, line))
+
+	if logger.writebuf.ptr.Len() > 1024*1024*3 {
+		logger.switchBuf()
+		message <- true
+	}
+	logger.mu.Unlock()
+}
+
+func makeLogHead() (headTime, file string, line int) {
+	now := time.Now()
+	fileTime := now.Format("20060102 15:04:05")
+	fileTime = fmt.Sprintf("%s.%09d", fileTime, now.Nanosecond())
+	_, file, line, ok := runtime.Caller(logger.depth)
+	if ok == false {
+		panic(errors.New("get the line failed"))
+	}
+	tmp := strings.Split(file, "/")
+	file = tmp[len(tmp)-1]
+	return fileTime, file, line
 }
 
 func Debug(format string, args ...interface{}) {
@@ -123,34 +178,4 @@ func Fatal(format string, args ...interface{}) {
 
 	logger.logFormat(FatalLevel, fmt.Sprintf(format, args...))
 	os.Exit(-1)
-}
-
-func (logger *Logger) logFormat(level int, log string) {
-	defer func() {
-		if err := recover(); err != nil {
-			fmt.Println(err)
-		}
-	}()
-
-	now := time.Now()
-	if now.Unix() > nextCreateFileTime {
-		if err := logFileProperty.getLogFile(); err != nil {
-			panic(err)
-		}
-	}
-
-	time := now.Format("20060102 15:04:05")
-	time = fmt.Sprintf("%s.%09d", time, now.Nanosecond())
-	_, file, line, ok := runtime.Caller(logger.depth)
-	if ok == false {
-		panic(errors.New("get the line failed"))
-	}
-
-	tmp := strings.Split(file, "/")
-	file = tmp[len(tmp)-1]
-
-	_, err := Write(logFileProperty.logFile, fmt.Sprintf("%s [%s]: %s (%s:%d) \n", time, severityName[level], log, file, line))
-	if err != nil {
-		panic(err)
-	}
 }

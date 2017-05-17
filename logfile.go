@@ -12,12 +12,10 @@ import (
 
 type LogFileProperty struct {
 	programName string
-	date        string
-	time        string
 	hostname    string
 	pid         string
 	rootPath    string
-	logFile     *os.File
+	file        *os.File
 }
 
 var logFileProperty LogFileProperty
@@ -26,16 +24,25 @@ func init() {
 	logFileProperty.programName = filepath.Base(os.Args[0])
 	logFileProperty.hostname, _ = os.Hostname()
 	logFileProperty.pid = strconv.Itoa(os.Getpid())
-	//logFileProperty.date = time.Now()
 }
 
-func Write(file *os.File, content string) (bool, error) {
-	_, err := file.WriteString(content)
+const flushInterval = 2 * time.Second
 
-	if err != nil {
-		return false, err
+func WriteFile() {
+	t := time.NewTicker(flushInterval)
+	for {
+		select {
+		case <-message:
+			bufBytes := logger.readbuf.ptr.Bytes()
+			logFileProperty.file.Write(bufBytes)
+			logger.readbuf.ptr.Reset()
+		case <-t.C:
+			logger.switchBuf()
+			bufBytes := logger.readbuf.ptr.Bytes()
+			logFileProperty.file.Write(bufBytes)
+			logger.readbuf.ptr.Reset()
+		}
 	}
-	return true, nil
 }
 
 func logName(t time.Time) (name string) {
@@ -56,30 +63,53 @@ func logName(t time.Time) (name string) {
 
 func createLogDir() {
 	os.MkdirAll(logFileProperty.rootPath, 0777)
-	//os.MkdirAll(logger.root_path, os.ModeDir)
 }
 
 var onceLogDir sync.Once
+var nextDayCreateFileTime int64
 
 func (logFileProperty *LogFileProperty) getLogFile() error {
 
 	onceLogDir.Do(createLogDir)
 
-	nextCreateFileTime = time.Now().Unix()/(24*3600)*(24*3600) + 16*3600
+	nextDayCreateFileTime = time.Now().Unix()/(24*3600)*(24*3600) + 16*3600
 
 	logName := logName(time.Now())
 	logPath := fmt.Sprintf("%s/%s", logFileProperty.rootPath, logName)
 
+	logFileProperty.file.Close()
 	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, os.ModePerm)
 	if file == nil {
 		return errors.New("open log file failed:" + err.Error())
 	}
-
-	logFileProperty.logFile = file
+	logFileProperty.file = file
 
 	return err
 }
 
-func Close() error {
-	return logFileProperty.logFile.Close()
+func close() error {
+	return logFileProperty.file.Close()
+}
+
+func (logFileProperty *LogFileProperty) getFileSize() int64 {
+	fileInfo, _ := logFileProperty.file.Stat()
+	return fileInfo.Size()
+}
+
+func fileInfoMonitor() {
+	t := time.NewTicker(3 * time.Second)
+	for {
+		select {
+		case <-t.C:
+			if logFileProperty.getFileSize() > rollFileSize ||
+				time.Now().Unix() > nextDayCreateFileTime {
+				logFileProperty.getLogFile()
+			}
+		}
+	}
+}
+
+func isExitDir(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil || os.IsExist(err)
 }
