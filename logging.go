@@ -44,7 +44,7 @@ type buffer struct {
 
 var logger Logger
 
-const defaultCallDepth int = 2
+const defaultCallDepth int = 3
 
 var message = make(chan bool)
 
