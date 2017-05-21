@@ -2,12 +2,11 @@ package zlog
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 )
@@ -79,8 +78,7 @@ func InitLogger(rootPath string, level int) {
 		panic(err)
 	}
 
-	go WriteFile()
-	go fileInfoMonitor()
+	go WriteMsg()
 }
 
 func SetOutput(out io.Writer) {
@@ -116,28 +114,31 @@ func (logger *Logger) logFormat(level int, log string) {
 		}
 	}()
 
-	fileTime, file, line := makeLogHead()
+	fileTime, filename, line := makeLogHead()
 	logger.mu.Lock()
-	logger.writebuf.ptr.WriteString(fmt.Sprintf("%s [%s]: %s (%s:%d) \n", fileTime, severityName[level], log, file, line))
+	logger.writebuf.ptr.WriteString(fmt.Sprintf("%s [%s]: %s (%s:%d) \n", fileTime, severityName[level], log, filename, line))
 
-	if logger.writebuf.ptr.Len() > 1024*1024*3 {
-		logger.switchBuf()
+	if logger.writebuf.ptr.Len() > 1024*1024*10 {
 		message <- true
 	}
 	logger.mu.Unlock()
 }
 
-func makeLogHead() (headTime, file string, line int) {
+func makeLogHead() (headTime, fileName string, line int) {
 	now := time.Now()
 	fileTime := now.Format("20060102 15:04:05")
 	fileTime = fmt.Sprintf("%s.%09d", fileTime, now.Nanosecond())
-	_, file, line, ok := runtime.Caller(logger.depth)
+	_, filePath, line, ok := runtime.Caller(logger.depth)
 	if ok == false {
-		panic(errors.New("get the line failed"))
+		fileName = "xxx"
+		line = 0
+		//panic(errors.New("get the line failed"))
 	}
-	tmp := strings.Split(file, "/")
-	file = tmp[len(tmp)-1]
-	return fileTime, file, line
+	//tmp := strings.Split(file, "/")
+	//file = tmp[len(tmp)-1]
+	_, fileName = path.Split(filePath)
+
+	return fileTime, fileName, line
 }
 
 func Debug(format string, args ...interface{}) {

@@ -16,6 +16,8 @@ type LogFileProperty struct {
 	pid         string
 	rootPath    string
 	file        *os.File
+	filename    string
+	curFileSize int64
 }
 
 var logFileProperty LogFileProperty
@@ -28,19 +30,14 @@ func init() {
 
 const flushInterval = 2 * time.Second
 
-func WriteFile() {
+func WriteMsg() {
 	t := time.NewTicker(flushInterval)
 	for {
 		select {
 		case <-message:
-			bufBytes := logger.readbuf.ptr.Bytes()
-			logFileProperty.file.Write(bufBytes)
-			logger.readbuf.ptr.Reset()
+			logFileProperty.writeToFile()
 		case <-t.C:
-			logger.switchBuf()
-			bufBytes := logger.readbuf.ptr.Bytes()
-			logFileProperty.file.Write(bufBytes)
-			logger.readbuf.ptr.Reset()
+			logFileProperty.writeToFile()
 		}
 	}
 }
@@ -76,15 +73,27 @@ func (logFileProperty *LogFileProperty) getLogFile() error {
 
 	logName := logName(time.Now())
 	logPath := fmt.Sprintf("%s/%s", logFileProperty.rootPath, logName)
+	if logFileProperty.file != nil {
+		logFileProperty.file.Close()
+	}
 
-	logFileProperty.file.Close()
 	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, os.ModePerm)
 	if file == nil {
 		return errors.New("open log file failed:" + err.Error())
 	}
 	logFileProperty.file = file
 
-	return err
+	return logFileProperty.initFileInfo()
+}
+
+// get file init size
+func (logFileProperty *LogFileProperty) initFileInfo() error {
+	fileInfo, err := logFileProperty.file.Stat()
+	if err != nil {
+		return errors.New("get log file info err")
+	}
+	logFileProperty.curFileSize = fileInfo.Size()
+	return nil
 }
 
 func close() error {
@@ -96,17 +105,21 @@ func (logFileProperty *LogFileProperty) getFileSize() int64 {
 	return fileInfo.Size()
 }
 
-func fileInfoMonitor() {
-	t := time.NewTicker(3 * time.Second)
-	for {
-		select {
-		case <-t.C:
-			if logFileProperty.getFileSize() > rollFileSize ||
-				time.Now().Unix() > nextDayCreateFileTime {
-				logFileProperty.getLogFile()
-			}
-		}
+// switch the two buf and write to file
+func (logFileProperty *LogFileProperty) writeToFile() error {
+	logger.switchBuf()
+	if logFileProperty.curFileSize > rollFileSize ||
+		time.Now().Unix() > nextDayCreateFileTime {
+		logFileProperty.getLogFile()
 	}
+	bufBytes := logger.readbuf.ptr.Bytes()
+	size, err := logFileProperty.file.Write(bufBytes)
+	if err != nil {
+		return err
+	}
+	logFileProperty.curFileSize = logFileProperty.curFileSize + int64(size)
+	logger.readbuf.ptr.Reset()
+	return nil
 }
 
 func isExitDir(path string) bool {
