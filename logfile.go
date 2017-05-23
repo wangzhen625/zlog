@@ -1,6 +1,7 @@
 package zlog
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -18,6 +19,14 @@ type LogFileProperty struct {
 	file        *os.File
 	filename    string
 	curFileSize int64
+	buffers     [2]bytes.Buffer
+	writebuf    buffer
+	readbuf     buffer
+}
+
+type buffer struct {
+	ptr   *bytes.Buffer
+	index int
 }
 
 var logFileProperty LogFileProperty
@@ -26,6 +35,10 @@ func init() {
 	logFileProperty.programName = filepath.Base(os.Args[0])
 	logFileProperty.hostname, _ = os.Hostname()
 	logFileProperty.pid = strconv.Itoa(os.Getpid())
+	logFileProperty.writebuf.ptr = &logFileProperty.buffers[0]
+	logFileProperty.writebuf.index = 0
+	logFileProperty.readbuf.ptr = &logFileProperty.buffers[0]
+	logFileProperty.readbuf.index = 0
 }
 
 const flushInterval = 2 * time.Second
@@ -34,15 +47,15 @@ func WriteMsg() {
 	t := time.NewTicker(flushInterval)
 	for {
 		select {
-		case <-message:
-			logFileProperty.writeToFile()
+		case msg := <-message:
+			logFileProperty.writebuf.ptr.WriteString(msg)
 		case <-t.C:
 			logFileProperty.writeToFile()
 		}
 	}
 }
 
-func logName(t time.Time) (name string) {
+func logFileName(t time.Time) (name string) {
 
 	name = fmt.Sprintf("%s.%04d%02d%02d-%02d%02d%02d.%s.%s.log",
 		logFileProperty.programName,
@@ -65,14 +78,16 @@ func createLogDir() {
 var onceLogDir sync.Once
 var nextDayCreateFileTime int64
 
-func (logFileProperty *LogFileProperty) getLogFile() error {
+func (logFileProperty *LogFileProperty) getLogFile(t time.Time) error {
 
 	onceLogDir.Do(createLogDir)
 
-	nextDayCreateFileTime = time.Now().Unix()/(24*3600)*(24*3600) + 16*3600
+	year, mon, day := t.Add(24 * time.Hour).Date()
+	nextDayCreateFileTime = time.Date(year, mon, day, 0, 0, 0, 0, t.Location()).Unix()
+	//nextDayCreateFileTime = t.Unix()/(24*3600)*(24*3600) + 16*3600
 
-	logName := logName(time.Now())
-	logPath := fmt.Sprintf("%s/%s", logFileProperty.rootPath, logName)
+	fileName := logFileName(t)
+	logPath := fmt.Sprintf("%s/%s", logFileProperty.rootPath, fileName)
 	if logFileProperty.file != nil {
 		logFileProperty.file.Close()
 	}
@@ -107,22 +122,37 @@ func (logFileProperty *LogFileProperty) getFileSize() int64 {
 
 // switch the two buf and write to file
 func (logFileProperty *LogFileProperty) writeToFile() error {
-	logger.switchBuf()
+	logFileProperty.switchBuf()
+	when := time.Now()
 	if logFileProperty.curFileSize > rollFileSize ||
-		time.Now().Unix() > nextDayCreateFileTime {
-		logFileProperty.getLogFile()
+		when.Unix() > nextDayCreateFileTime {
+		logFileProperty.getLogFile(when)
 	}
-	bufBytes := logger.readbuf.ptr.Bytes()
+	bufBytes := logFileProperty.readbuf.ptr.Bytes()
 	size, err := logFileProperty.file.Write(bufBytes)
 	if err != nil {
 		return err
 	}
 	logFileProperty.curFileSize = logFileProperty.curFileSize + int64(size)
-	logger.readbuf.ptr.Reset()
+	logFileProperty.readbuf.ptr.Reset()
 	return nil
 }
 
 func isExitDir(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil || os.IsExist(err)
+}
+
+func (logFileProperty *LogFileProperty) switchBuf() {
+	if logFileProperty.writebuf.index == 0 {
+		logFileProperty.writebuf.ptr = &logFileProperty.buffers[1]
+		logFileProperty.writebuf.index = 1
+		logFileProperty.readbuf.ptr = &logFileProperty.buffers[0]
+		logFileProperty.readbuf.index = 0
+	} else {
+		logFileProperty.writebuf.ptr = &logFileProperty.buffers[0]
+		logFileProperty.writebuf.index = 0
+		logFileProperty.readbuf.ptr = &logFileProperty.buffers[1]
+		logFileProperty.readbuf.index = 1
+	}
 }

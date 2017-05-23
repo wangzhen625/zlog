@@ -1,7 +1,6 @@
 package zlog
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -31,22 +30,14 @@ var severityName = []string{
 type Logger struct {
 	logLevel int
 	depth    int
-	buffers  [2]bytes.Buffer
-	writebuf buffer
-	readbuf  buffer
 	mu       sync.Mutex
-}
-
-type buffer struct {
-	ptr   *bytes.Buffer
-	index int
 }
 
 var logger Logger
 
 const defaultCallDepth int = 3
 
-var message = make(chan bool)
+var message = make(chan string)
 
 //50M roll back the file
 var rollFileSize int64 = 1024 * 1024 * 50
@@ -54,12 +45,7 @@ var rollFileSize int64 = 1024 * 1024 * 50
 func init() {
 	logger.depth = defaultCallDepth
 	logger.logLevel = TraceLevel
-	logger.writebuf.ptr = &logger.buffers[0]
-	logger.writebuf.index = 0
-	logger.readbuf.ptr = &logger.buffers[0]
-	logger.readbuf.index = 0
 }
-
 func InitLogger(rootPath string, level int) {
 
 	defer func() {
@@ -73,7 +59,7 @@ func InitLogger(rootPath string, level int) {
 	}
 
 	logFileProperty.rootPath = rootPath
-	err := logFileProperty.getLogFile()
+	err := logFileProperty.getLogFile(time.Now())
 	if err != nil {
 		panic(err)
 	}
@@ -83,20 +69,6 @@ func InitLogger(rootPath string, level int) {
 
 func SetOutput(out io.Writer) {
 
-}
-
-func (logger *Logger) switchBuf() {
-	if logger.writebuf.index == 0 {
-		logger.writebuf.ptr = &logger.buffers[1]
-		logger.writebuf.index = 1
-		logger.readbuf.ptr = &logger.buffers[0]
-		logger.readbuf.index = 0
-	} else {
-		logger.writebuf.ptr = &logger.buffers[0]
-		logger.writebuf.index = 0
-		logger.readbuf.ptr = &logger.buffers[1]
-		logger.readbuf.index = 1
-	}
 }
 
 // call after InitLogger function
@@ -116,11 +88,7 @@ func (logger *Logger) logFormat(level int, log string) {
 
 	fileTime, filename, line := makeLogHead()
 	logger.mu.Lock()
-	logger.writebuf.ptr.WriteString(fmt.Sprintf("%s [%s]: %s (%s:%d) \n", fileTime, severityName[level], log, filename, line))
-
-	if logger.writebuf.ptr.Len() > 1024*1024*10 {
-		message <- true
-	}
+	message <- fmt.Sprintf("%s [%s]: %s (%s:%d) \n", fileTime, severityName[level], log, filename, line)
 	logger.mu.Unlock()
 }
 
